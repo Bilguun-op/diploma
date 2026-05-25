@@ -1,5 +1,5 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useMemo } from "react";
 import { useStore } from "@/lib/store";
 import { useI18n } from "@/lib/i18n";
 import { Button } from "@/components/ui/button";
@@ -30,25 +30,52 @@ function HomePage() {
     if (!user.loggedIn) nav({ to: "/login" });
   }, [user.loggedIn, nav]);
 
-  // Daily study stopwatch
-  const [running, setRunning] = useState(false);
+  // Automatic study timer states
   const [seconds, setSeconds] = useState(0);
+  const [running, setRunning] = useState(false);
   const ref = useRef<number | null>(null);
+
   useEffect(() => {
-    if (!running) return;
-    ref.current = window.setInterval(() => {
-      setSeconds((s) => {
-        const nxt = s + 1;
-        if (nxt % 60 === 0) addStudyMinutes(1);
-        return nxt;
-      });
-    }, 1000);
+    const handleVisibilityChange = () => {
+      if (document.hidden || !running) {
+        if (ref.current) {
+          window.clearInterval(ref.current);
+          ref.current = null;
+        }
+      } else {
+        startTimer();
+      }
+    };
+
+    const startTimer = () => {
+      if (!ref.current && running) {
+        ref.current = window.setInterval(() => {
+          setSeconds((s) => {
+            const nxt = s + 1;
+            if (nxt % 60 === 0) addStudyMinutes(1);
+            return nxt;
+          });
+        }, 1000);
+      }
+    };
+
+    if (running) {
+      startTimer();
+    } else if (ref.current) {
+      window.clearInterval(ref.current);
+      ref.current = null;
+    }
+
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+
     return () => {
       if (ref.current) window.clearInterval(ref.current);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
     };
   }, [running, addStudyMinutes]);
 
   const [placementOpen, setPlacementOpen] = useState(false);
+  const [placementResult, setPlacementResult] = useState<number | null>(null);
   const [openLevel, setOpenLevel] = useState<number | null>(0);
   const [active, setActive] = useState<ActiveModule>(null);
   const [levelTestFor, setLevelTestFor] = useState<number | null>(null);
@@ -80,7 +107,7 @@ function HomePage() {
       <div className="grid gap-4 md:grid-cols-3">
         <button
           onClick={() => setPlacementOpen(true)}
-          className="group relative col-span-2 overflow-hidden rounded-3xl border border-border/60 bg-[image:var(--gradient-hero)] p-6 text-left shadow-[var(--shadow-glow)] transition-transform hover:scale-[1.01]"
+          className="group relative col-span-2 overflow-hidden rounded-3xl border border-border/60 bg-(image:--gradient-hero) p-6 text-left shadow-(--shadow-glow) transition-transform hover:scale-[1.01]"
         >
           <div className="absolute -right-6 -top-6 h-32 w-32 rounded-full bg-white/10 blur-2xl" />
           <Sparkles className="h-6 w-6 text-primary-foreground" />
@@ -127,7 +154,7 @@ function HomePage() {
                   className="flex w-full items-center justify-between gap-4 px-5 py-4 text-left"
                 >
                   <div className="flex items-center gap-4">
-                    <div className={`grid h-12 w-12 place-items-center rounded-xl ${status === "completed" ? "bg-emerald-500/20 text-emerald-300" : status === "unlocked" ? "bg-[image:var(--gradient-hero)] text-primary-foreground" : "bg-muted text-muted-foreground"}`}>
+                    <div className={`grid h-12 w-12 place-items-center rounded-xl ${status === "completed" ? "bg-emerald-500/20 text-emerald-300" : status === "unlocked" ? "bg-(image:--gradient-hero) text-primary-foreground" : "bg-muted text-muted-foreground"}`}>
                       {status === "locked" ? <Lock className="h-5 w-5" /> : status === "completed" ? <Check className="h-5 w-5" /> : <span className="font-bold">{lvlIdx + 1}</span>}
                     </div>
                     <div>
@@ -171,7 +198,7 @@ function HomePage() {
                     })}
                     <Button
                       disabled={!allDone}
-                      className="w-full bg-[image:var(--gradient-amber)] text-amber-foreground hover:opacity-90"
+                      className="w-full bg-(image:--gradient-amber) text-amber-foreground hover:opacity-90"
                       onClick={() => setLevelTestFor(lvlIdx)}
                     >
                       <Trophy className="mr-2 h-4 w-4" />
@@ -185,7 +212,7 @@ function HomePage() {
         </div>
       </section>
 
-      {placementOpen && (
+      {placementOpen && placementResult === null && (
         <Modal onClose={() => setPlacementOpen(false)} title={t("placementTest")}>
           <QuizRunner
             pool={PLACEMENT_QUESTIONS}
@@ -193,12 +220,39 @@ function HomePage() {
             onDone={(score) => {
               const level = Math.min(4, Math.max(0, Math.floor(score / 3) - 1 + 1));
               setPlacementLevel(level);
-              setPlacementOpen(false);
+              setPlacementResult(level);
             }}
           />
           <p className="mt-3 text-center text-xs text-muted-foreground">
             {t("tip")}: {lang === "en" ? "Your score determines your starting level." : "Таны оноо эхлэх түвшинг тогтооно."}
           </p>
+        </Modal>
+      )}
+
+      {placementResult !== null && (
+        <Modal onClose={() => { setPlacementResult(null); setPlacementOpen(false); }} title={t("placementTest")}>
+          <div className="text-center space-y-6">
+            <div>
+              <p className="text-sm text-muted-foreground mb-2">{lang === "en" ? "Your Placement Level" : "Таны түвшин"}</p>
+              <div className="inline-flex items-center justify-center h-24 w-24 rounded-full bg-(image:--gradient-hero) text-primary-foreground">
+                <span className="text-5xl font-bold">{placementResult + 1}</span>
+              </div>
+            </div>
+            <div className="space-y-2">
+              <p className="font-semibold">{lang === "en" ? `Welcome to Level ${placementResult + 1}!` : `${placementResult + 1}-р түвшинд сургалт эхэл!`}</p>
+              <p className="text-sm text-muted-foreground">
+                {lang === "en" 
+                  ? `Levels 1-${placementResult + 1} are now unlocked for you.` 
+                  : `${placementResult + 1}-р түвшин хүртэлх бүх түвшинүүд нээлээ.`}
+              </p>
+            </div>
+            <Button 
+              className="w-full bg-(image:--gradient-hero)"
+              onClick={() => { setPlacementResult(null); setPlacementOpen(false); }}
+            >
+              {lang === "en" ? "Start Learning" : "Сурах эхлэх"}
+            </Button>
+          </div>
         </Modal>
       )}
 
@@ -237,7 +291,7 @@ function HomePage() {
 function Modal({ title, children, onClose }: { title: string; children: React.ReactNode; onClose: () => void }) {
   return (
     <div className="fixed inset-0 z-50 grid place-items-center bg-background/80 p-4 backdrop-blur-sm" onClick={onClose}>
-      <div className="w-full max-w-2xl rounded-3xl border border-border/60 bg-card p-6 shadow-[var(--shadow-glow)]" onClick={(e) => e.stopPropagation()}>
+      <div className="w-full max-w-2xl rounded-3xl border border-border/60 bg-card p-6 shadow-(--shadow-glow)" onClick={(e) => e.stopPropagation()}>
         <div className="mb-4 flex items-center justify-between">
           <h3 className="font-bold">{title}</h3>
           <button className="text-muted-foreground hover:text-foreground" onClick={onClose}>✕</button>
@@ -250,28 +304,32 @@ function Modal({ title, children, onClose }: { title: string; children: React.Re
 
 function ModuleRunner({ kind, onComplete }: { kind: "reading" | "grammar" | "vocab"; onComplete: () => void }) {
   const { t } = useI18n();
+  
+  const passage = useMemo(() => shuffle(READING_PASSAGES)[0], []);
+  const grammarPool = useMemo(() => shuffle(Object.values(GRAMMAR_QUIZZES).flat()).slice(0, 12), []);
+  const vocabItems = useMemo(() => shuffle(VOCAB_POOL).slice(0, 5), []);
+  const vocabPool = useMemo(() => {
+    return vocabItems.map((it) => {
+      const others = shuffle(VOCAB_POOL.filter((v) => v.word !== it.word)).slice(0, 3).map((v) => v.def);
+      const options = shuffle([it.def, ...others]);
+      return { q: `"${it.word}" — ${t("vocabulary")}`, options, answer: options.indexOf(it.def) };
+    });
+  }, [vocabItems, t]);
+  
   if (kind === "reading") {
-    const passage = shuffle(READING_PASSAGES)[0];
     return (
       <div className="space-y-4">
         <div className="rounded-xl border border-border/60 bg-background/40 p-4">
           <h4 className="mb-2 font-semibold text-accent">{passage.title}</h4>
           <p className="text-sm leading-relaxed text-muted-foreground">{passage.text}</p>
         </div>
-        <QuizRunner pool={passage.questions} count={3} onDone={onComplete} />
+        <QuizRunner pool={passage.questions} count={5} onDone={onComplete} />
       </div>
     );
   }
   if (kind === "grammar") {
-    const pool = shuffle(Object.values(GRAMMAR_QUIZZES).flat()).slice(0, 12);
-    return <QuizRunner pool={pool} count={5} onDone={onComplete} />;
+    return <QuizRunner pool={grammarPool} count={5} onDone={onComplete} />;
   }
-  // vocab matching
-  const items = shuffle(VOCAB_POOL).slice(0, 5);
-  const pool = items.map((it) => {
-    const others = shuffle(VOCAB_POOL.filter((v) => v.word !== it.word)).slice(0, 3).map((v) => v.def);
-    const options = shuffle([it.def, ...others]);
-    return { q: `"${it.word}" — ${t("vocabulary")}`, options, answer: options.indexOf(it.def) };
-  });
-  return <QuizRunner pool={pool} count={5} onDone={onComplete} />;
+  
+  return <QuizRunner pool={vocabPool} count={5} onDone={onComplete} />;
 }

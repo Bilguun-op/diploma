@@ -2,7 +2,8 @@ import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useEffect } from "react";
 import { useStore } from "@/lib/store";
 import { useI18n } from "@/lib/i18n";
-import { Trophy, Sparkles } from "lucide-react";
+import { Switch } from "@/components/ui/switch";
+import { Moon, Sun, Trophy, Sparkles } from "lucide-react";
 
 export const Route = createFileRoute("/profile")({
   head: () => ({
@@ -15,7 +16,7 @@ export const Route = createFileRoute("/profile")({
 });
 
 function ProfilePage() {
-  const { user } = useStore();
+  const { user, setTheme } = useStore();
   const { t, lang, setLang } = useI18n();
   const nav = useNavigate();
 
@@ -71,6 +72,27 @@ function ProfilePage() {
               <option value="en">English</option>
               <option value="mn">Монгол</option>
             </select>
+          </div>
+
+          <div className="mt-4 flex items-center justify-between gap-4 rounded-xl border border-border/60 bg-background/40 px-4 py-3">
+            <div className="flex items-center gap-3">
+              {user.theme === "light" ? (
+                <Sun className="h-5 w-5 text-amber" />
+              ) : (
+                <Moon className="h-5 w-5 text-accent" />
+              )}
+              <div>
+                <p className="text-sm font-semibold">Theme</p>
+                <p className="text-xs text-muted-foreground">
+                  {user.theme === "light" ? "Light mode" : "Dark mode"}
+                </p>
+              </div>
+            </div>
+            <Switch
+              checked={user.theme === "light"}
+              onCheckedChange={(checked) => setTheme(checked ? "light" : "dark")}
+              aria-label="Use light mode"
+            />
           </div>
         </div>
 

@@ -83,6 +83,8 @@ export const READING_PASSAGES = [
       { q: "How many sports does Naadam feature?", options: ["2", "3", "4", "5"], answer: 1 },
       { q: "When is Naadam held?", options: ["Winter", "Spring", "Summer", "Autumn"], answer: 2 },
       { q: "What do people wear?", options: ["Jeans", "Deels", "Suits", "Uniforms"], answer: 1 },
+      { q: "Where do people gather for Naadam?", options: ["Ulaanbaatar", "London", "Tokyo", "Sydney"], answer: 0 },
+      { q: "Which sport is part of Naadam?", options: ["Swimming", "Archery", "Basketball", "Tennis"], answer: 1 },
     ],
   },
   {
@@ -92,6 +94,8 @@ export const READING_PASSAGES = [
       { q: "What animals live in the Gobi?", options: ["Lions and tigers", "Camels and leopards", "Bears", "Wolves only"], answer: 1 },
       { q: "Gobi is one of the ___ deserts.", options: ["smallest", "largest", "wettest", "coldest only"], answer: 1 },
       { q: "How is Gobi in summer?", options: ["Cold", "Hot", "Snowy", "Rainy"], answer: 1 },
+      { q: "How is the Gobi in winter?", options: ["Cold", "Tropical", "Rainy", "Humid"], answer: 0 },
+      { q: "What type of place is the Gobi?", options: ["A forest", "A desert", "A city", "An ocean"], answer: 1 },
     ],
   },
   {
@@ -101,6 +105,8 @@ export const READING_PASSAGES = [
       { q: "What is Ulaanbaatar?", options: ["A river", "The capital", "A mountain", "A desert"], answer: 1 },
       { q: "Population is over...", options: ["500,000", "1 million", "1.5 million", "5 million"], answer: 2 },
       { q: "City blends modern with...", options: ["jungles", "ger districts", "beaches", "farms"], answer: 1 },
+      { q: "What modern buildings are mentioned?", options: ["Skyscrapers", "Castles", "Igloos", "Temples only"], answer: 0 },
+      { q: "Ulaanbaatar is home to over ___ people.", options: ["1.5 million", "10,000", "100,000", "20 million"], answer: 0 },
     ],
   },
 ];
