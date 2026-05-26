@@ -18,15 +18,15 @@ export const Route = createFileRoute("/arcade")({
 });
 
 function ArcadePage() {
-  const { user } = useStore();
+  const { user, bootstrapped } = useStore();
   const { t } = useI18n();
   const nav = useNavigate();
   const [game, setGame] = useState<"menu" | "scramble" | "puzzle" | "blaster">("menu");
 
   useEffect(() => {
-    if (!user.loggedIn) nav({ to: "/login" });
-  }, [user.loggedIn, nav]);
-  if (!user.loggedIn) return null;
+    if (bootstrapped && !user.loggedIn) nav({ to: "/login" });
+  }, [bootstrapped, user.loggedIn, nav]);
+  if (!bootstrapped || !user.loggedIn) return null;
 
   return (
     <div className="mx-auto max-w-6xl px-4 py-8 md:px-6">

@@ -16,7 +16,7 @@ export function QuizRunner({
   onDone?: (score: number, total: number) => void;
 }) {
   const { addExp } = useStore();
-  const { t } = useI18n();
+  const { t, lang } = useI18n();
   const questions = useMemo(() => shuffle(pool).slice(0, Math.min(count, pool.length)), [pool, count]);
   const [i, setI] = useState(0);
   const [picked, setPicked] = useState<number | null>(null);
@@ -94,6 +94,15 @@ export function QuizRunner({
           );
         })}
       </div>
+
+      {/* Show correct answer in Mongolian when wrong */}
+      {picked !== null && !correct && lang === "mn" && (
+        <div className="mt-4 p-3 rounded-lg bg-emerald-500/10 border border-emerald-500/30">
+          <p className="text-xs font-semibold text-emerald-200">{t("correctAnswer")}:</p>
+          <p className="text-sm text-emerald-100 mt-1">{q.options[q.answer]}</p>
+        </div>
+      )}
+
       <div className="mt-5 flex items-center justify-between">
         <span className="text-xs text-muted-foreground">
           {picked === null ? "" : correct ? t("correct") : t("incorrect")}

@@ -13,6 +13,7 @@ import { I18nProvider } from "@/lib/i18n";
 import { StoreProvider } from "@/lib/store";
 import { Toaster } from "@/components/ui/sonner";
 import { AppHeader } from "@/components/AppHeader";
+import { PwaInstallPrompt } from "@/components/PwaInstallPrompt";
 
 function NotFoundComponent() {
   return (
@@ -76,6 +77,11 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
     meta: [
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1" },
+      { name: "theme-color", content: "#0f172a" },
+      { name: "mobile-web-app-capable", content: "yes" },
+      { name: "apple-mobile-web-app-capable", content: "yes" },
+      { name: "apple-mobile-web-app-status-bar-style", content: "black-translucent" },
+      { name: "apple-mobile-web-app-title", content: "Spark" },
       { title: "Mongol English Spark — Learn English for Mongolian Students" },
       { name: "description", content: "Cinematic English learning platform for Mongolian students: placement test, levels, grammar videos and arcade." },
       { name: "author", content: "Lovable" },
@@ -90,6 +96,8 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
         rel: "stylesheet",
         href: appCss,
       },
+      { rel: "manifest", href: "/manifest.webmanifest" },
+      { rel: "apple-touch-icon", href: "/icon-192.png" },
     ],
   }),
   shellComponent: RootShell,
@@ -125,6 +133,7 @@ function RootComponent() {
               <Outlet />
             </main>
           </div>
+          <PwaInstallPrompt />
           <Toaster />
         </StoreProvider>
       </I18nProvider>

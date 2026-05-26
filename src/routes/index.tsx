@@ -1,12 +1,12 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { useEffect, useRef, useState, useMemo } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { useStore } from "@/lib/store";
 import { useI18n } from "@/lib/i18n";
 import { Button } from "@/components/ui/button";
-import { PLACEMENT_QUESTIONS, READING_PASSAGES, GRAMMAR_QUIZZES, VOCAB_POOL, shuffle } from "@/lib/content";
+import { PLACEMENT_QUESTIONS, READING_PASSAGES, GRAMMAR_QUIZZES, VOCAB_POOL, shuffle, LEVEL_1_QUESTIONS, LEVEL_2_QUESTIONS, LEVEL_3_QUESTIONS, LEVEL_4_QUESTIONS, LEVEL_5_QUESTIONS } from "@/lib/content";
 import { QuizRunner } from "@/components/QuizRunner";
 import {
-  Sparkles, Lock, Check, Play, Pause, RotateCcw, ChevronDown, BookOpen, Brain, Trophy,
+  Sparkles, Lock, Check, ChevronDown, BookOpen, Brain, Trophy,
 } from "lucide-react";
 
 export const Route = createFileRoute("/")({
@@ -22,57 +22,13 @@ export const Route = createFileRoute("/")({
 type ActiveModule = { level: number; unit: number; kind: "reading" | "grammar" | "vocab" } | null;
 
 function HomePage() {
-  const { user, addStudyMinutes, setPlacementLevel, completeModule, setLevelStatus, addExp } = useStore();
+  const { user, bootstrapped, setPlacementLevel, completeModule, setLevelStatus, addExp } = useStore();
   const { t, lang } = useI18n();
   const nav = useNavigate();
 
   useEffect(() => {
-    if (!user.loggedIn) nav({ to: "/login" });
-  }, [user.loggedIn, nav]);
-
-  // Automatic study timer states
-  const [seconds, setSeconds] = useState(0);
-  const [running, setRunning] = useState(false);
-  const ref = useRef<number | null>(null);
-
-  useEffect(() => {
-    const handleVisibilityChange = () => {
-      if (document.hidden || !running) {
-        if (ref.current) {
-          window.clearInterval(ref.current);
-          ref.current = null;
-        }
-      } else {
-        startTimer();
-      }
-    };
-
-    const startTimer = () => {
-      if (!ref.current && running) {
-        ref.current = window.setInterval(() => {
-          setSeconds((s) => {
-            const nxt = s + 1;
-            if (nxt % 60 === 0) addStudyMinutes(1);
-            return nxt;
-          });
-        }, 1000);
-      }
-    };
-
-    if (running) {
-      startTimer();
-    } else if (ref.current) {
-      window.clearInterval(ref.current);
-      ref.current = null;
-    }
-
-    document.addEventListener("visibilitychange", handleVisibilityChange);
-
-    return () => {
-      if (ref.current) window.clearInterval(ref.current);
-      document.removeEventListener("visibilitychange", handleVisibilityChange);
-    };
-  }, [running, addStudyMinutes]);
+    if (bootstrapped && !user.loggedIn) nav({ to: "/login" });
+  }, [bootstrapped, user.loggedIn, nav]);
 
   const [placementOpen, setPlacementOpen] = useState(false);
   const [placementResult, setPlacementResult] = useState<number | null>(null);
@@ -80,12 +36,12 @@ function HomePage() {
   const [active, setActive] = useState<ActiveModule>(null);
   const [levelTestFor, setLevelTestFor] = useState<number | null>(null);
 
-  if (!user.loggedIn) return null;
+  if (!bootstrapped || !user.loggedIn) return null;
 
-  const fmt = (s: number) => {
-    const m = Math.floor(s / 60);
-    const sec = s % 60;
-    return `${m.toString().padStart(2, "0")}:${sec.toString().padStart(2, "0")}`;
+  const fmt = (minutes: number) => {
+    const h = Math.floor(minutes / 60);
+    const m = minutes % 60;
+    return `${h.toString().padStart(2, "0")}:${m.toString().padStart(2, "0")}`;
   };
 
   return (
@@ -121,19 +77,30 @@ function HomePage() {
         </button>
 
         <div className="rounded-3xl border border-border/60 bg-card p-6">
-          <p className="text-xs uppercase tracking-widest text-muted-foreground">{t("dailyStudy")}</p>
-          <p className="mt-2 font-mono text-4xl font-bold text-accent">{fmt(seconds)}</p>
-          <p className="text-xs text-muted-foreground">
-            {user.studyMinutes} {t("minutesToday")}
-          </p>
-          <div className="mt-4 flex gap-2">
-            <Button size="sm" variant={running ? "secondary" : "default"} onClick={() => setRunning((r) => !r)}>
-              {running ? <><Pause className="mr-1 h-3 w-3" />{t("pause")}</> : <><Play className="mr-1 h-3 w-3" />{t("start")}</>}
-            </Button>
-            <Button size="sm" variant="ghost" onClick={() => { setSeconds(0); setRunning(false); }}>
-              <RotateCcw className="mr-1 h-3 w-3" />{t("reset")}
-            </Button>
+          <div className="grid grid-cols-2 gap-4">
+            {/* Daily Study Time */}
+            <div>
+              <p className="text-xs uppercase tracking-widest text-muted-foreground">{t("dailyStudy")}</p>
+              <p className="mt-2 font-mono text-3xl font-bold text-accent">{fmt(user.studyMinutes)}</p>
+              <p className="text-xs text-muted-foreground mt-1">
+                {user.studyMinutes} {t("minutesToday")}
+              </p>
+            </div>
+            
+            {/* Total Study Time */}
+            <div>
+              <p className="text-xs uppercase tracking-widest text-muted-foreground">{t("totalStudy")}</p>
+              <p className="mt-2 font-mono text-3xl font-bold text-primary">
+                {fmt(user.totalStudyMinutes)}
+              </p>
+              <p className="text-xs text-muted-foreground mt-1">
+                {user.totalStudyMinutes} min total
+              </p>
+            </div>
           </div>
+          <p className="text-xs text-muted-foreground mt-4 italic">
+            ⏱️ {t("timerAutomatic")}
+          </p>
         </div>
       </div>
 
@@ -259,6 +226,7 @@ function HomePage() {
       {active && (
         <Modal onClose={() => setActive(null)} title={`${t("level")} ${active.level + 1} · ${t("unit")} ${active.unit + 1}`}>
           <ModuleRunner
+            level={active.level}
             kind={active.kind}
             onComplete={() => {
               completeModule(active.level, active.unit);
@@ -302,11 +270,29 @@ function Modal({ title, children, onClose }: { title: string; children: React.Re
   );
 }
 
-function ModuleRunner({ kind, onComplete }: { kind: "reading" | "grammar" | "vocab"; onComplete: () => void }) {
+function ModuleRunner({ level, kind, onComplete }: { level: number; kind: "reading" | "grammar" | "vocab"; onComplete: () => void }) {
   const { t } = useI18n();
   
+  // Get level-appropriate question pool
+  const getLevelPool = () => {
+    switch (level) {
+      case 0:
+        return LEVEL_1_QUESTIONS;
+      case 1:
+        return LEVEL_2_QUESTIONS;
+      case 2:
+        return LEVEL_3_QUESTIONS;
+      case 3:
+        return LEVEL_4_QUESTIONS;
+      case 4:
+        return LEVEL_5_QUESTIONS;
+      default:
+        return LEVEL_1_QUESTIONS;
+    }
+  };
+
   const passage = useMemo(() => shuffle(READING_PASSAGES)[0], []);
-  const grammarPool = useMemo(() => shuffle(Object.values(GRAMMAR_QUIZZES).flat()).slice(0, 12), []);
+  const grammarPool = useMemo(() => shuffle(getLevelPool()).slice(0, 12), [level]);
   const vocabItems = useMemo(() => shuffle(VOCAB_POOL).slice(0, 5), []);
   const vocabPool = useMemo(() => {
     return vocabItems.map((it) => {
@@ -323,7 +309,7 @@ function ModuleRunner({ kind, onComplete }: { kind: "reading" | "grammar" | "voc
           <h4 className="mb-2 font-semibold text-accent">{passage.title}</h4>
           <p className="text-sm leading-relaxed text-muted-foreground">{passage.text}</p>
         </div>
-        <QuizRunner pool={passage.questions} count={5} onDone={onComplete} />
+        <QuizRunner pool={passage.questions} count={3} onDone={onComplete} />
       </div>
     );
   }

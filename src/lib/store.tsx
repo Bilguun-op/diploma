@@ -3,14 +3,18 @@ import {
   useContext,
   useEffect,
   useState,
+  useRef,
   type ReactNode,
 } from "react";
 import { toast } from "sonner";
+
+import { getCurrentUser, type AuthUser } from "@/api/auth";
 
 export type LevelStatus = "locked" | "unlocked" | "completed";
 export type ThemeMode = "dark" | "light";
 
 export interface UserState {
+  id: string;
   name: string;
   grade: string;
   exp: number;
@@ -20,12 +24,14 @@ export interface UserState {
   levelStatuses: LevelStatus[];
   unitsCompleted: number[][];
   loggedIn: boolean;
+  token: string;
   theme: ThemeMode;
 }
 
 const todayStr = () => new Date().toISOString().slice(0, 10);
 
 const defaultState: UserState = {
+  id: "",
   name: "",
   grade: "",
   exp: 0,
@@ -35,80 +41,202 @@ const defaultState: UserState = {
   levelStatuses: ["unlocked", "unlocked", "unlocked", "unlocked", "unlocked"],
   unitsCompleted: Array.from({ length: 5 }, () => [0, 0, 0, 0, 0]),
   loggedIn: false,
+  token: "",
   theme: "dark",
 };
 
 interface StoreCtx {
   user: UserState;
-  login: (name: string, grade: string) => void;
+  isAuthenticated: boolean;
+  bootstrapped: boolean;
+  login: (authUser: AuthUser, token: string) => void;
+  legacyLogin: (name: string, grade: string) => void;
   logout: () => void;
   addExp: (amount: number) => void;
-  addStudyMinutes: (m: number) => void;
-  setLevelStatus: (idx: number, s: LevelStatus) => void;
+  addStudyMinutes: (minutes: number) => void;
+  setLevelStatus: (idx: number, status: LevelStatus) => void;
   completeModule: (level: number, unit: number) => void;
   setPlacementLevel: (level: number) => void;
   setTheme: (theme: ThemeMode) => void;
-
-  // ✅ FIX ADDED
-  isAuthenticated: boolean;
 }
 
 const Ctx = createContext<StoreCtx | null>(null);
 
+function normalizeState(raw: Partial<UserState> | null): UserState {
+  const merged: UserState = {
+    ...defaultState,
+    ...raw,
+    totalStudyMinutes: raw?.totalStudyMinutes ?? 0,
+    levelStatuses:
+      raw?.levelStatuses?.length === 5
+        ? raw.levelStatuses
+        : defaultState.levelStatuses,
+    unitsCompleted:
+      raw?.unitsCompleted?.length === 5
+        ? raw.unitsCompleted
+        : defaultState.unitsCompleted,
+    theme: raw?.theme === "light" ? "light" : "dark",
+    token:
+      raw?.token ||
+      (typeof window !== "undefined"
+        ? localStorage.getItem("mes_token") || ""
+        : ""),
+  };
+
+  if (merged.studyDate !== todayStr()) {
+    merged.studyDate = todayStr();
+    merged.studyMinutes = 0;
+  }
+
+  merged.loggedIn = Boolean(merged.token && merged.name);
+  return merged;
+}
+
 export function StoreProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<UserState>(defaultState);
+  const [bootstrapped, setBootstrapped] = useState(false);
+  const timerRef = useRef<number | null>(null);
 
-  useEffect(() => {
+  const persist = (nextUser: UserState) => {
+    setUser(nextUser);
+
     if (typeof window === "undefined") return;
 
-    const raw = localStorage.getItem("mes_user");
+    localStorage.setItem("mes_user", JSON.stringify(nextUser));
 
-    if (raw) {
-      try {
-        const parsed = JSON.parse(raw) as UserState;
-
-        if (parsed.studyDate !== todayStr()) {
-          parsed.studyDate = todayStr();
-          parsed.studyMinutes = 0;
-        }
-
-        // Ensure totalStudyMinutes exists for backward compatibility
-        if (!parsed.totalStudyMinutes) {
-          parsed.totalStudyMinutes = 0;
-        }
-
-        if (!parsed.theme) {
-          parsed.theme = "dark";
-        }
-
-        setUser(parsed);
-      } catch {}
+    if (nextUser.token) {
+      localStorage.setItem("mes_token", nextUser.token);
+    } else {
+      localStorage.removeItem("mes_token");
     }
+  };
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      setBootstrapped(true);
+      return;
+    }
+
+    const raw = localStorage.getItem("mes_user");
+    const parsed = raw ? (JSON.parse(raw) as Partial<UserState>) : null;
+    const restored = normalizeState(parsed);
+
+    setUser(restored);
+
+    if (!restored.token) {
+      setBootstrapped(true);
+      return;
+    }
+
+    getCurrentUser()
+      .then(({ data }) => {
+        persist(
+          normalizeState({
+            ...restored,
+            id: data.user.id,
+            name: data.user.name,
+            grade: data.user.grade || restored.grade,
+            loggedIn: true,
+          }),
+        );
+      })
+      .catch(() => {
+        persist({ ...defaultState, theme: restored.theme });
+      })
+      .finally(() => setBootstrapped(true));
   }, []);
 
   useEffect(() => {
     if (typeof document === "undefined") return;
 
     document.documentElement.classList.toggle("light", user.theme === "light");
+    document.documentElement.style.colorScheme =
+      user.theme === "light" ? "light" : "dark";
   }, [user.theme]);
 
-  const persist = (u: UserState) => {
-    setUser(u);
-    if (typeof window !== "undefined") {
-      localStorage.setItem("mes_user", JSON.stringify(u));
+  // Global study timer - runs across all pages
+  useEffect(() => {
+    let secondsCount = 0;
+
+    const startTimer = () => {
+      if (timerRef.current) window.clearInterval(timerRef.current);
+      timerRef.current = window.setInterval(() => {
+        secondsCount += 1;
+        if (secondsCount % 60 === 0) {
+          setUser((prevUser) => {
+            const newDate = todayStr();
+            const isSameDay = prevUser.studyDate === newDate;
+            const updatedUser = {
+              ...prevUser,
+              studyMinutes: isSameDay ? prevUser.studyMinutes + 1 : 1,
+              totalStudyMinutes: prevUser.totalStudyMinutes + 1,
+              studyDate: newDate,
+            };
+            // Persist to localStorage
+            if (typeof window !== "undefined") {
+              localStorage.setItem("mes_user", JSON.stringify(updatedUser));
+            }
+            return updatedUser;
+          });
+        }
+      }, 1000);
+    };
+
+    const stopTimer = () => {
+      if (timerRef.current) {
+        window.clearInterval(timerRef.current);
+        timerRef.current = null;
+      }
+    };
+
+    const handleVisibilityChange = () => {
+      if (document.hidden) {
+        stopTimer();
+      } else {
+        startTimer();
+      }
+    };
+
+    // Start timer on mount if user is logged in
+    if (user.loggedIn) {
+      startTimer();
     }
+
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+
+    return () => {
+      if (timerRef.current) window.clearInterval(timerRef.current);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
+  }, [user.loggedIn]);
+
+  const login = (authUser: AuthUser, token: string) => {
+    persist(
+      normalizeState({
+        ...user,
+        id: authUser.id,
+        name: authUser.name,
+        grade: authUser.grade || user.grade || "10",
+        token,
+        loggedIn: true,
+      }),
+    );
   };
 
-  const login = (name: string, grade: string) => {
-    persist({ ...defaultState, name, grade, loggedIn: true });
+  const legacyLogin = (name: string, grade: string) => {
+    persist(
+      normalizeState({
+        ...user,
+        name,
+        grade,
+        token: user.token || "local-session",
+        loggedIn: true,
+      }),
+    );
   };
 
   const logout = () => {
-    persist({ ...defaultState });
-
-    if (typeof window !== "undefined") {
-      localStorage.removeItem("mes_user");
-    }
+    persist({ ...defaultState, theme: user.theme });
   };
 
   const addExp = (amount: number) => {
@@ -116,40 +244,42 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     toast.success(`+${amount} EXP`, { description: "Keep going!" });
   };
 
-  const addStudyMinutes = (m: number) => {
+  const addStudyMinutes = (minutes: number) => {
     persist({
       ...user,
-      studyMinutes: user.studyMinutes + m,
-      totalStudyMinutes: user.totalStudyMinutes + m,
+      studyMinutes: user.studyMinutes + minutes,
+      totalStudyMinutes: user.totalStudyMinutes + minutes,
       studyDate: todayStr(),
     });
   };
 
-  const setLevelStatus = (idx: number, s: LevelStatus) => {
-    const arr = [...user.levelStatuses];
-    arr[idx] = s;
+  const setLevelStatus = (idx: number, status: LevelStatus) => {
+    const levelStatuses = [...user.levelStatuses];
+    levelStatuses[idx] = status;
 
     if (
-      s === "completed" &&
-      idx + 1 < arr.length &&
-      arr[idx + 1] === "locked"
+      status === "completed" &&
+      idx + 1 < levelStatuses.length &&
+      levelStatuses[idx + 1] === "locked"
     ) {
-      arr[idx + 1] = "unlocked";
+      levelStatuses[idx + 1] = "unlocked";
     }
 
-    persist({ ...user, levelStatuses: arr });
+    persist({ ...user, levelStatuses });
   };
 
   const completeModule = (level: number, unit: number) => {
-    const grid = user.unitsCompleted.map((r) => [...r]);
+    const unitsCompleted = user.unitsCompleted.map((row) => [...row]);
 
-    if (grid[level][unit] < 3) grid[level][unit] += 1;
+    if (unitsCompleted[level][unit] < 3) {
+      unitsCompleted[level][unit] += 1;
+    }
 
-    persist({ ...user, unitsCompleted: grid });
+    persist({ ...user, unitsCompleted });
   };
 
   const setPlacementLevel = (level: number) => {
-    const arr: LevelStatus[] = [
+    const levelStatuses: LevelStatus[] = [
       "locked",
       "locked",
       "locked",
@@ -157,25 +287,26 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       "locked",
     ];
 
-    for (let i = 0; i < level; i++) arr[i] = "completed";
+    for (let i = 0; i < level; i += 1) {
+      levelStatuses[i] = "completed";
+    }
 
-    arr[level] = "unlocked";
-
-    persist({ ...user, levelStatuses: arr });
+    levelStatuses[level] = "unlocked";
+    persist({ ...user, levelStatuses });
   };
 
-  // ✅ FIX ADDED
   const setTheme = (theme: ThemeMode) => {
     persist({ ...user, theme });
   };
-
-  const isAuthenticated = user.loggedIn;
 
   return (
     <Ctx.Provider
       value={{
         user,
+        isAuthenticated: user.loggedIn,
+        bootstrapped,
         login,
+        legacyLogin,
         logout,
         addExp,
         addStudyMinutes,
@@ -183,7 +314,6 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         completeModule,
         setPlacementLevel,
         setTheme,
-        isAuthenticated,
       }}
     >
       {children}
@@ -192,7 +322,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 }
 
 export function useStore() {
-  const c = useContext(Ctx);
-  if (!c) throw new Error("useStore must be used within StoreProvider");
-  return c;
+  const ctx = useContext(Ctx);
+  if (!ctx) throw new Error("useStore must be used within StoreProvider");
+  return ctx;
 }

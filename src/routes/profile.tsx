@@ -16,14 +16,14 @@ export const Route = createFileRoute("/profile")({
 });
 
 function ProfilePage() {
-  const { user, setTheme } = useStore();
+  const { user, bootstrapped, setTheme } = useStore();
   const { t, lang, setLang } = useI18n();
   const nav = useNavigate();
 
   useEffect(() => {
-    if (!user.loggedIn) nav({ to: "/login" });
-  }, [user.loggedIn, nav]);
-  if (!user.loggedIn) return null;
+    if (bootstrapped && !user.loggedIn) nav({ to: "/login" });
+  }, [bootstrapped, user.loggedIn, nav]);
+  if (!bootstrapped || !user.loggedIn) return null;
 
   const completedLevels = user.levelStatuses.filter((s) => s === "completed").length;
   const currentLevel = Math.min(5, completedLevels + 1);
